@@ -32,6 +32,7 @@ def seconds_to_time(seconds: int) -> str:
 
 class StartingToPlayEmbed(discord.Embed):
     """Embed запуска проигрывателя"""
+
     def __init__(self, ctx: discord.ApplicationContext, song: Song, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
@@ -45,17 +46,27 @@ class StartingToPlayEmbed(discord.Embed):
 
 class QueueEmbed(discord.Embed):
     """Embed для списка очереди трэков"""
+
     def __init__(self, queue: List[Song], *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.title = f"Очередь | Всего: `{len(queue)}`"
         self.color = discord.Color.dark_red()
 
-        for i, song in enumerate(queue):
-            self.add_field(name=f"`#{i+1}`", value=f"`{song.artist} - {song.title}`", inline=False)
+        self._add_fields(queue)
+
+    def _add_fields(self, elements: list[Song]):
+        """Добавляет поля с трэками в Embed"""
+        _elements = elements[:25] if len(elements) > 25 else elements
+        for i, song in enumerate(_elements):
+            if i == 24:
+                self.add_field(name=f"`И ещё {len(elements) - 25}`...", value="", inline=False)
+                return
+            self.add_field(name=f"`#{i + 1}`", value=f"`{song.artist} - {song.title}`", inline=False)
 
 
 class SearchEmbed(discord.Embed):
     """Embed результата поиска"""
+
     def __init__(self, queue: List[Song], *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.title = f"Поиск"
@@ -67,6 +78,7 @@ class SearchEmbed(discord.Embed):
 
 class SearchVariantButton(discord.ui.Button):
     """Кнопка варианта выбора трэка"""
+
     def __init__(self, label: str, parent_view: discord.ui.View, callback_: Callable, song, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.style = discord.ButtonStyle.primary
@@ -85,6 +97,7 @@ class SearchVariantButton(discord.ui.Button):
 
 class SearchView(discord.ui.View):
     """View с кнопками выбора трэка"""
+
     def __init__(self,
                  ctx: discord.ApplicationContext,
                  queue: List[Song],
@@ -104,7 +117,7 @@ class SearchView(discord.ui.View):
         self._play_next = _play_next
 
         for i, song in enumerate(self._songs):
-            self.add_item(SearchVariantButton(label=f"{i+1}",
+            self.add_item(SearchVariantButton(label=f"{i + 1}",
                                               parent_view=self,
                                               song=song,
                                               callback_=self.btn_callback))
@@ -174,7 +187,9 @@ class MusicCog(commands.Cog):
 
         await self._play_next(ctx)
 
-    @commands.slash_command(name="playlist", description="Проигрывает плейлист из ВКонтакте по URL", guild_ids=GUILD_IDS)
+    @commands.slash_command(name="playlist",
+                            description="Проигрывает плейлист из ВКонтакте по URL",
+                            guild_ids=GUILD_IDS)
     async def playlist_vkontakte(self, ctx: discord.ApplicationContext, url: Option(str, "URL плейлиста")):
         """Запускает плейлист по URL из ВКонтакте"""
         requestor_channel = ctx.author.voice.channel if ctx.author.voice else None
