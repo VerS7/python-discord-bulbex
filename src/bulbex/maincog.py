@@ -3,6 +3,8 @@ Discord cog с основным функционалом
 """
 from typing import List, Callable
 
+from random import shuffle
+
 import discord
 from discord import Option
 from discord.ext import commands
@@ -190,7 +192,10 @@ class MusicCog(commands.Cog):
     @commands.slash_command(name="playlist",
                             description="Проигрывает плейлист из ВКонтакте по URL",
                             guild_ids=GUILD_IDS)
-    async def playlist_vkontakte(self, ctx: discord.ApplicationContext, url: Option(str, "URL плейлиста")):
+    async def playlist_vkontakte(self,
+                                 ctx: discord.ApplicationContext,
+                                 url: Option(str, "URL плейлиста"),
+                                 shuffle_: Option(bool, name="shuffle", description="Перемешать трэки", required=False)):
         """Запускает плейлист по URL из ВКонтакте"""
         requestor_channel = ctx.author.voice.channel if ctx.author.voice else None
         voice_client = ctx.voice_client
@@ -218,6 +223,9 @@ class MusicCog(commands.Cog):
             await ctx.respond("**Плейлист приватный или не существует.**")
             return
 
+        if shuffle_:
+            shuffle(songs)
+
         self._queue.extend(songs)
 
         if voice_client.is_playing():
@@ -233,7 +241,7 @@ class MusicCog(commands.Cog):
         """Выводит трэки в очереди"""
         logger.info(f"{ctx.guild.name} | Вызов /queue от {ctx.author.name} в чате {ctx.channel.name}")
         if len(self._queue) == 0:
-            await ctx.respond("**Очередь пуста**")
+            await ctx.respond("**Очередь пустая.**")
             return
 
         await ctx.respond(embed=QueueEmbed(self._queue))
