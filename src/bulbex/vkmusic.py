@@ -13,7 +13,6 @@ from aiohttp.web import HTTPNotFound
 
 from .config import VK_LOGIN, VK_PASSWORD, VK_BYPASS_AUTH, VK_BYPASS_ACCESS_TOKEN
 
-
 PLAYLIST_ID_PATTERN = r"_(\d+)"
 PLAYLIST_OWNER_PATTERN = r"/(\d+)_"
 
@@ -21,7 +20,7 @@ PLAYLIST_OWNER_PATTERN = r"/(\d+)_"
 def parse_playlist_url(url: str) -> Tuple[int, int]:
     """Возвращает код плейлиста по url"""
     url_data = urlparse(url)
-    if not "vk.com" in url_data.netloc:
+    if "vk.com" not in url_data.netloc:
         raise ValueError("Переданный url не принадлежит vk.com")
 
     if not url_data.path:
@@ -37,6 +36,7 @@ def parse_playlist_url(url: str) -> Tuple[int, int]:
 
 class Credentials:
     """Логин и пароль для доступа во ВКонтакте"""
+
     def __init__(self, login: str, password: str):
         self.login = login
         self.password = password
@@ -44,6 +44,7 @@ class Credentials:
 
 class Client:
     """Клиент для работы с ВКонтакте"""
+
     def __init__(self, user_agent: str, client_id: str, client_secret: str):
         self.user_agent = user_agent
         self.client_id = client_id
@@ -52,6 +53,7 @@ class Client:
 
 class Song:
     """Трэк"""
+
     def __init__(self, artist: str, title: str, duration: int, download_link: str):
         self.artist = artist
         self.title = title
