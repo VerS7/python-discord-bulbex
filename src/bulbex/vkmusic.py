@@ -1,12 +1,38 @@
 """
 Поисковик музыки во ВКонтакте
 """
-from typing import List
+import re
+
+from typing import List, Tuple
+
+from urllib.parse import urlparse
 
 import aiohttp.web
 from aiohttp import ClientSession
+from aiohttp.web import HTTPNotFound
 
 from .config import VK_LOGIN, VK_PASSWORD, VK_BYPASS_AUTH, VK_BYPASS_ACCESS_TOKEN
+
+
+PLAYLIST_ID_PATTERN = r"_(\d+)"
+PLAYLIST_OWNER_PATTERN = r"/(\d+)_"
+
+
+def parse_playlist_url(url: str) -> Tuple[int, int]:
+    """Возвращает код плейлиста по url"""
+    url_data = urlparse(url)
+    if not "vk.com" in url_data.netloc:
+        raise ValueError("Переданный url не принадлежит vk.com")
+
+    if not url_data.path:
+        raise ValueError("Переданный url некорректный.")
+
+    match_id = re.search(PLAYLIST_ID_PATTERN, url_data.path)
+    match_owner = re.search(PLAYLIST_OWNER_PATTERN, url_data.path)
+    if match_id and match_owner:
+        return match_id.group(1), match_owner.group(1)
+
+    raise ValueError("Переданный url некорректный.")
 
 
 class Credentials:
@@ -73,6 +99,24 @@ class VKMusicSearch:
 
         return songs
 
+    async def playlist(self, playlist_url: str) -> Tuple[List[Song], int]:
+        """Возвращает плейлист с трэками по url"""
+        playlist_id, owner_id = parse_playlist_url(playlist_url)
+        content = await self._playlist(owner_id, playlist_id)
+        initial_tracks_count = content["response"]["count"]
+        songs = []
+
+        for item in content["response"]["items"]:
+            if not item["url"]:
+                continue
+
+            songs.append(Song(artist=item["artist"],
+                              title=item["title"],
+                              duration=item["duration"],
+                              download_link=item["url"]))
+
+        return songs, initial_tracks_count
+
     async def _update_access_token(self) -> None:
         """Обновляет токен доступа"""
         content = await self._request_auth()
@@ -82,6 +126,27 @@ class VKMusicSearch:
                                                  "лучше попробовать позже.")
 
         self._access_token = ["access_token"]
+
+    async def _playlist(self, owner_id: int, playlist_id: int):
+        """Запрашивает плейлист по id пользователя и id плейлиста"""
+        if not self._access_token:
+            await self._update_access_token()
+
+        params = [
+            ("access_token", self._access_token),
+            ("https", 1),
+            ("lang", "ru"),
+            ("extended", 1),
+            ("v", "5.131"),
+            ("owner_id", owner_id),
+            ("album_id", playlist_id)
+        ]
+
+        async with self.session.post(f"https://api.vk.com/method/audio.get", data=params, ssl=False) as response:
+            data = await response.json()
+            if "error" in data.keys():
+                raise HTTPNotFound()
+            return data
 
     async def _search(self, query: str, count: int):
         """Запрашивает трэки"""

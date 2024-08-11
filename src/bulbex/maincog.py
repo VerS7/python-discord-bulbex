@@ -7,6 +7,8 @@ import discord
 from discord import Option
 from discord.ext import commands
 
+from aiohttp.web import HTTPNotFound
+
 from loguru import logger
 
 from .vkmusic import VKMusicSearch, KateMobile, AccessCredentials, Song
@@ -169,6 +171,45 @@ class MusicCog(commands.Cog):
                               f"Трэков впереди: `{len(self._queue)}`**")
         else:
             await ctx.respond(f"**Запрошен трэк `{song.artist} - {song.title}`**")
+
+        await self._play_next(ctx)
+
+    @commands.slash_command(name="playlist", description="Проигрывает плейлист из ВКонтакте по URL", guild_ids=GUILD_IDS)
+    async def playlist_vkontakte(self, ctx: discord.ApplicationContext, url: Option(str, "URL плейлиста")):
+        """Запускает плейлист по URL из ВКонтакте"""
+        requestor_channel = ctx.author.voice.channel if ctx.author.voice else None
+        voice_client = ctx.voice_client
+
+        logger.info(f"{ctx.guild.name} | Вызов /playlist от {ctx.author.name} в чате {ctx.channel.name}. "
+                    f"{f'Голосовой канал: {requestor_channel}. ' if requestor_channel else ''}Запрос: {url}.")
+
+        if not requestor_channel:
+            await ctx.respond("**Вы не находитесь в голосовом канале!**")
+            return
+
+        if not voice_client or not voice_client.is_connected():
+            voice_client = await requestor_channel.connect()
+
+        if voice_client and voice_client.channel != requestor_channel:
+            await voice_client.disconnect(force=True)
+
+        try:
+            songs, count = await self._vk_search.playlist(url)
+        except ValueError:
+            await ctx.respond("**Некорректный URL.**")
+            return
+
+        except HTTPNotFound:
+            await ctx.respond("**Плейлист приватный или не существует.**")
+            return
+
+        self._queue.extend(songs)
+
+        if voice_client.is_playing():
+            await ctx.respond(f"**Плейлист добавлен в очередь. Доступно трэков `{len(songs)}` из `{count}`. "
+                              f"Трэков впереди: `{len(self._queue)}`**")
+        else:
+            await ctx.respond(f"**Запрошен плейлист. Доступно трэков `{len(songs)}` из `{count}`**")
 
         await self._play_next(ctx)
 
