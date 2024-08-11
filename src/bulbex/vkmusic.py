@@ -140,6 +140,7 @@ class VKMusicSearch:
             ("lang", "ru"),
             ("extended", 1),
             ("v", "5.131"),
+            ("count", "1000"),
             ("owner_id", owner_id),
             ("album_id", playlist_id)
         ]
