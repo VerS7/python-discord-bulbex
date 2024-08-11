@@ -213,6 +213,8 @@ class MusicCog(commands.Cog):
         if voice_client and voice_client.channel != requestor_channel:
             await voice_client.disconnect(force=True)
 
+        await ctx.defer()
+
         try:
             songs, count = await self._vk_search.playlist(url)
         except ValueError:
