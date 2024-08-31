@@ -2,13 +2,14 @@
 Поисковик музыки во ВКонтакте
 """
 import re
+import asyncio
 
 from typing import List, Tuple
 
 from urllib.parse import urlparse
 
 import aiohttp.web
-from aiohttp import ClientSession
+from aiohttp import ClientSession, TCPConnector
 from aiohttp.web import HTTPNotFound
 
 from .config import VK_LOGIN, VK_PASSWORD, VK_BYPASS_AUTH, VK_BYPASS_ACCESS_TOKEN
@@ -76,7 +77,12 @@ class VKMusicSearch:
         else:
             self._access_token = self._update_access_token()
 
-        self.session = ClientSession(headers={"User-Agent": self._client.user_agent})
+        try:
+            loop = asyncio.get_event_loop()
+        except RuntimeError:
+            loop = asyncio.new_event_loop()
+
+        self.session = ClientSession(headers={"User-Agent": self._client.user_agent}, loop=loop)
 
     async def first_match(self, query: str) -> Song:
         """Возвращает первый найденный трэк по запросу"""
@@ -129,7 +135,7 @@ class VKMusicSearch:
 
         self._access_token = ["access_token"]
 
-    async def _playlist(self, owner_id: int, playlist_id: int):
+    async def _playlist(self, owner_id: str, playlist_id: str):
         """Запрашивает плейлист по id пользователя и id плейлиста"""
         if not self._access_token:
             await self._update_access_token()
