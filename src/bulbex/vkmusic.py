@@ -13,11 +13,11 @@ from aiohttp.web import HTTPNotFound
 
 from .config import VK_LOGIN, VK_PASSWORD, VK_BYPASS_AUTH, VK_BYPASS_ACCESS_TOKEN
 
-PLAYLIST_ID_PATTERN = r"_(\d+)"
-PLAYLIST_OWNER_PATTERN = r"/(\d+)_"
+PLAYLIST_ID_PATTERN = r"(?<=_)\d+(?=_)"
+PLAYLIST_OWNER_PATTERN = r"-?\d+(?=_)"
 
 
-def parse_playlist_url(url: str) -> Tuple[int, int]:
+def parse_playlist_url(url: str) -> Tuple[str, str]:
     """Возвращает код плейлиста по url"""
     url_data = urlparse(url)
     if "vk.com" not in url_data.netloc:
@@ -29,7 +29,7 @@ def parse_playlist_url(url: str) -> Tuple[int, int]:
     match_id = re.search(PLAYLIST_ID_PATTERN, url_data.path)
     match_owner = re.search(PLAYLIST_OWNER_PATTERN, url_data.path)
     if match_id and match_owner:
-        return match_id.group(1), match_owner.group(1)
+        return match_id.group(), match_owner.group()
 
     raise ValueError("Переданный url некорректный.")
 
