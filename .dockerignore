@@ -1,0 +1,6 @@
+.gitignore
+*.pyc
+*.log
+LICENSE
+README.*
+.venv

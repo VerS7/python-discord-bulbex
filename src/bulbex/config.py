@@ -7,7 +7,7 @@ from distutils.util import strtobool
 import dotenv
 
 try:
-    dotenv.load_dotenv(path.join(path.dirname(path.dirname(__file__)), ".env"))
+    dotenv.load_dotenv(path.join(path.dirname(path.dirname(path.dirname(__file__))), ".env"))
 except FileNotFoundError:
     pass
 
