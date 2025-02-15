@@ -1,6 +1,7 @@
 """
 Конфиги
 """
+
 from os import path, getenv
 from distutils.util import strtobool
 
@@ -27,6 +28,9 @@ VK_PASSWORD = getenv("VK_PASSWORD")
 # Обход запроса на доступ если access_token уже есть
 VK_BYPASS_AUTH = strtobool(getenv("VK_BYPASS_AUTH"))
 VK_BYPASS_ACCESS_TOKEN = getenv("VK_BYPASS_ACCESS_TOKEN")
+
+# Доступ к Yandex
+YANDEX_ACCESS_TOKEN = getenv("YANDEX_ACCESS_TOKEN")
 
 # Логгер
 LOGGER_FILE_PATH = getenv("LOGGER_FILEPATH")

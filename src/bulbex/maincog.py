@@ -1,6 +1,7 @@
 """
 Discord cog с основным функционалом
 """
+
 from typing import List, Callable
 
 from random import shuffle
@@ -13,8 +14,15 @@ from aiohttp.web import HTTPNotFound
 
 from loguru import logger
 
-from .vkmusic import VKMusicSearch, KateMobile, AccessCredentials, Song
-from .config import GUILD_ID, FFMPEG, BITRATE
+from .music import VKMusicSearch, YandexMusicSearch, KateMobile, Credentials, Song
+from .config import (
+    GUILD_ID,
+    FFMPEG,
+    BITRATE,
+    VK_BYPASS_ACCESS_TOKEN,
+    VK_BYPASS_AUTH,
+    YANDEX_ACCESS_TOKEN,
+)
 
 GUILD_IDS = []
 if GUILD_ID:
@@ -61,9 +69,15 @@ class QueueEmbed(discord.Embed):
         _elements = elements[:25] if len(elements) > 25 else elements
         for i, song in enumerate(_elements):
             if i == 24:
-                self.add_field(name=f"`И ещё {len(elements) - 25}`...", value="", inline=False)
+                self.add_field(
+                    name=f"`И ещё {len(elements) - 25}`...", value="", inline=False
+                )
                 return
-            self.add_field(name=f"`#{i + 1}`", value=f"`{song.artist} - {song.title}`", inline=False)
+            self.add_field(
+                name=f"`#{i + 1}`",
+                value=f"`{song.artist} - {song.title}`",
+                inline=False,
+            )
 
 
 class SearchEmbed(discord.Embed):
@@ -71,17 +85,29 @@ class SearchEmbed(discord.Embed):
 
     def __init__(self, queue: List[Song], *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.title = f"Поиск"
+        self.title = "Поиск"
         self.color = discord.Color.dark_red()
 
         for i, song in enumerate(queue):
-            self.add_field(name=f"`#{i + 1}`", value=f"`{song.artist} - {song.title}`", inline=False)
+            self.add_field(
+                name=f"`#{i + 1}`",
+                value=f"`{song.artist} - {song.title}`",
+                inline=False,
+            )
 
 
 class SearchVariantButton(discord.ui.Button):
     """Кнопка варианта выбора трэка"""
 
-    def __init__(self, label: str, parent_view: discord.ui.View, callback_: Callable, song, *args, **kwargs):
+    def __init__(
+        self,
+        label: str,
+        parent_view: discord.ui.View,
+        callback_: Callable,
+        song,
+        *args,
+        **kwargs,
+    ):
         super().__init__(*args, **kwargs)
         self.style = discord.ButtonStyle.primary
         self.label = label
@@ -100,14 +126,15 @@ class SearchVariantButton(discord.ui.Button):
 class SearchView(discord.ui.View):
     """View с кнопками выбора трэка"""
 
-    def __init__(self,
-                 ctx: discord.ApplicationContext,
-                 queue: List[Song],
-                 songs: List[Song],
-                 _play_next,
-                 *args,
-                 **kwargs
-                 ):
+    def __init__(
+        self,
+        ctx: discord.ApplicationContext,
+        queue: List[Song],
+        songs: List[Song],
+        _play_next,
+        *args,
+        **kwargs,
+    ):
         super().__init__(*args, **kwargs)
         self.timeout = 30
         self.disable_on_timeout = True
@@ -119,10 +146,14 @@ class SearchView(discord.ui.View):
         self._play_next = _play_next
 
         for i, song in enumerate(self._songs):
-            self.add_item(SearchVariantButton(label=f"{i + 1}",
-                                              parent_view=self,
-                                              song=song,
-                                              callback_=self.btn_callback))
+            self.add_item(
+                SearchVariantButton(
+                    label=f"{i + 1}",
+                    parent_view=self,
+                    song=song,
+                    callback_=self.btn_callback,
+                )
+            )
 
     async def on_timeout(self):
         """Выходит с голосового канала если трэк не выбран и бот не проигрывает трэки"""
@@ -137,8 +168,10 @@ class SearchView(discord.ui.View):
         self._queue.append(song)
 
         if self._ctx.voice_client and self._ctx.voice_client.is_playing():
-            await self._ctx.respond(f"**Добавлено в очередь `{song.artist} - {song.title}`. "
-                                    f"Трэков впереди: `{len(self._queue)}`**")
+            await self._ctx.respond(
+                f"**Добавлено в очередь `{song.artist} - {song.title}`. "
+                f"Трэков впереди: `{len(self._queue)}`**"
+            )
 
         await self._play_next(self._ctx)
 
@@ -150,17 +183,54 @@ class MusicCog(commands.Cog):
 
     def __init__(self, bot_: discord.Bot):
         self._bot = bot_
-        self._vk_search = VKMusicSearch(KateMobile, AccessCredentials)
+
+        if not VK_BYPASS_AUTH:
+            self._vk_search = VKMusicSearch(KateMobile, Credentials)
+
+        else:
+            self._vk_search = VKMusicSearch(
+                KateMobile, Credentials, VK_BYPASS_ACCESS_TOKEN
+            )
+
+        self._yandex_search = YandexMusicSearch(YANDEX_ACCESS_TOKEN)
+
         self._queue: List[Song] = []
 
-    @commands.slash_command(name="play", description="Проигрывает музыку из ВКонтакте", guild_ids=GUILD_IDS)
-    async def play_vkontakte(self, ctx: discord.ApplicationContext, song: Option(str, "Название трэка")):
-        """Находит и запускает проигрывание трэка из ВКонтакте"""
+    async def init_yamusic(self) -> None:
+        """Инициализация сервиса яндекс музыки"""
+        await self._yandex_search.async_init_client()
+
+    @commands.slash_command(
+        name="play", description="Проигрывает музыку.", guild_ids=GUILD_IDS
+    )
+    async def play(
+        self,
+        ctx: discord.ApplicationContext,
+        song: Option(str, "Название трэка"),
+        service: Option(
+            str,
+            choices=["vk", "ya"],
+            default="vk",
+            description="Сервис трэков",
+        ),
+    ):
+        """Находит и запускает проигрывание трэка"""
         requestor_channel = ctx.author.voice.channel if ctx.author.voice else None
         voice_client = ctx.voice_client
+        search = None
 
-        logger.info(f"{ctx.guild.name} | Вызов /play от {ctx.author.name} в чате {ctx.channel.name}. "
-                    f"{f'Голосовой канал: {requestor_channel}. ' if requestor_channel else ''}Запрос: {song}.")
+        match service:
+            case "vk":
+                search = self._vk_search
+            case "ya":
+                search = self._yandex_search
+            case _:
+                search = self._vk_search
+
+        logger.info(
+            f"{ctx.guild.name} | Вызов /play от {ctx.author.name} в чате {ctx.channel.name}. "
+            f"{f'Голосовой канал: {requestor_channel}. ' if requestor_channel else ''}Запрос: {song}."
+        )
 
         if not requestor_channel:
             await ctx.respond("**Вы не находитесь в голосовом канале!**")
@@ -173,35 +243,47 @@ class MusicCog(commands.Cog):
             await voice_client.disconnect(force=True)
 
         try:
-            song = await self._vk_search.first_match(query=song)
+            song = await search.first_match(query=song)
         except Exception as e:
             logger.exception(e)
-            await ctx.respond("**Сервис ВКонтакте сейчас не работает**")
+            await ctx.respond(
+                f"**Сервис {search.__class__.__name__} сейчас не работает**"
+            )
             return
 
         self._queue.append(song)
 
         if voice_client.is_playing():
-            await ctx.respond(f"**Добавлено в очередь `{song.artist} - {song.title}`. "
-                              f"Трэков впереди: `{len(self._queue)}`**")
+            await ctx.respond(
+                f"**Добавлено в очередь `{song.artist} - {song.title}`. "
+                f"Трэков впереди: `{len(self._queue)}`**"
+            )
         else:
             await ctx.respond(f"**Запрошен трэк `{song.artist} - {song.title}`**")
 
         await self._play_next(ctx)
 
-    @commands.slash_command(name="playlist",
-                            description="Проигрывает плейлист из ВКонтакте по URL",
-                            guild_ids=GUILD_IDS)
-    async def playlist_vkontakte(self,
-                                 ctx: discord.ApplicationContext,
-                                 url: Option(str, "URL плейлиста"),
-                                 shuffle_: Option(bool, name="shuffle", description="Перемешать трэки", required=False)):
+    @commands.slash_command(
+        name="playlist",
+        description="Проигрывает плейлист по URL",
+        guild_ids=GUILD_IDS,
+    )
+    async def playlist_vkontakte(
+        self,
+        ctx: discord.ApplicationContext,
+        url: Option(str, "URL плейлиста"),
+        shuffle_: Option(
+            bool, name="shuffle", description="Перемешать трэки", required=False
+        ),
+    ):
         """Запускает плейлист по URL из ВКонтакте"""
         requestor_channel = ctx.author.voice.channel if ctx.author.voice else None
         voice_client = ctx.voice_client
 
-        logger.info(f"{ctx.guild.name} | Вызов /playlist от {ctx.author.name} в чате {ctx.channel.name}. "
-                    f"{f'Голосовой канал: {requestor_channel}. ' if requestor_channel else ''}Запрос: {url}.")
+        logger.info(
+            f"{ctx.guild.name} | Вызов /playlist от {ctx.author.name} в чате {ctx.channel.name}. "
+            f"{f'Голосовой канал: {requestor_channel}. ' if requestor_channel else ''}Запрос: {url}."
+        )
 
         if not requestor_channel:
             await ctx.respond("**Вы не находитесь в голосовом канале!**")
@@ -231,31 +313,57 @@ class MusicCog(commands.Cog):
         self._queue.extend(songs)
 
         if voice_client.is_playing():
-            await ctx.respond(f"**Плейлист добавлен в очередь. Доступно трэков `{len(songs)}` из `{count}`. "
-                              f"Трэков впереди: `{len(self._queue)}`**")
+            await ctx.respond(
+                f"**Плейлист добавлен в очередь. Доступно трэков `{len(songs)}` из `{count}`. "
+                f"Трэков впереди: `{len(self._queue)}`**"
+            )
         else:
-            await ctx.respond(f"**Запрошен плейлист. Доступно трэков `{len(songs)}` из `{count}`**")
+            await ctx.respond(
+                f"**Запрошен плейлист. Доступно трэков `{len(songs)}` из `{count}`**"
+            )
 
         await self._play_next(ctx)
 
-    @commands.slash_command(name="queue", description="Список трэков в очереди", guild_ids=GUILD_IDS)
+    @commands.slash_command(
+        name="queue", description="Список трэков в очереди", guild_ids=GUILD_IDS
+    )
     async def queue(self, ctx: discord.ApplicationContext):
         """Выводит трэки в очереди"""
-        logger.info(f"{ctx.guild.name} | Вызов /queue от {ctx.author.name} в чате {ctx.channel.name}")
+        logger.info(
+            f"{ctx.guild.name} | Вызов /queue от {ctx.author.name} в чате {ctx.channel.name}"
+        )
         if len(self._queue) == 0:
             await ctx.respond("**Очередь пустая.**")
             return
 
         await ctx.respond(embed=QueueEmbed(self._queue))
 
-    @commands.slash_command(name="search", description="Поиск музыки во ВКонтакте", guild_ids=GUILD_IDS)
-    async def search_vkontakte(self, ctx: discord.ApplicationContext, song: Option(str, "Название трэка")):
-        """Поиск музыки во ВКонтакте"""
+    @commands.slash_command(
+        name="search", description="Поиск музыки во ВКонтакте", guild_ids=GUILD_IDS
+    )
+    async def search(
+        self,
+        ctx: discord.ApplicationContext,
+        song: Option(str, "Название трэка"),
+        service: Option(str, "Сервис трэков", choises=["vk, ya"], required=False),
+    ):
+        """Поиск музыки"""
         requestor_channel = ctx.author.voice.channel if ctx.author.voice else None
         voice_client = ctx.voice_client
+        search = None
 
-        logger.info(f"{ctx.guild.name} | Вызов /search от {ctx.author.name} в чате {ctx.channel.name}. "
-                    f"{f'Голосовой канал: {requestor_channel}. ' if requestor_channel else ''}Запрос: {song}.")
+        match service:
+            case "vk":
+                search = self._vk_search
+            case "ya":
+                search = self._yandex_search
+            case _:
+                search = self._vk_search
+
+        logger.info(
+            f"{ctx.guild.name} | Вызов /search от {ctx.author.name} в чате {ctx.channel.name}. "
+            f"{f'Голосовой канал: {requestor_channel}. ' if requestor_channel else ''}Запрос: {song}."
+        )
 
         if not requestor_channel:
             await ctx.respond("**Вы не находитесь в голосовом канале!**")
@@ -270,18 +378,26 @@ class MusicCog(commands.Cog):
         await ctx.defer()
 
         try:
-            songs = await self._vk_search.all(query=song)
+            songs = await search.all(query=song)
         except Exception as e:
             logger.exception(e)
-            await ctx.respond("**Очередь пуста**")
+            await ctx.respond("**Ничего не найдено.**")
             return
 
-        await ctx.respond("", embed=SearchEmbed(songs), view=SearchView(ctx, self._queue, songs, self._play_next))
+        await ctx.respond(
+            "",
+            embed=SearchEmbed(songs),
+            view=SearchView(ctx, self._queue, songs, self._play_next),
+        )
 
-    @commands.slash_command(name="skip", description="Пропустить текущий трэк", guild_ids=GUILD_IDS)
+    @commands.slash_command(
+        name="skip", description="Пропустить текущий трэк", guild_ids=GUILD_IDS
+    )
     async def skip(self, ctx: discord.ApplicationContext):
         """Пропускает текущий трэк в проигрывателе"""
-        logger.info(f"{ctx.guild.name} | Вызов /skip от {ctx.author.name} в чате {ctx.channel.name}")
+        logger.info(
+            f"{ctx.guild.name} | Вызов /skip от {ctx.author.name} в чате {ctx.channel.name}"
+        )
 
         if not ctx.voice_client:
             await ctx.respond("**Бот не находится в голосовом канале!**")
@@ -294,10 +410,14 @@ class MusicCog(commands.Cog):
         ctx.voice_client.stop()
         await ctx.respond("**Текущий трэк пропущен.**")
 
-    @commands.slash_command(name="stop", description="Отключить проигрыватель", guild_ids=GUILD_IDS)
+    @commands.slash_command(
+        name="stop", description="Отключить проигрыватель", guild_ids=GUILD_IDS
+    )
     async def stop(self, ctx: discord.ApplicationContext):
         """Отключает проигрыватель и очищает очередь"""
-        logger.info(f"{ctx.guild.name} | Вызов /stop от {ctx.author.name} в чате {ctx.channel.name}")
+        logger.info(
+            f"{ctx.guild.name} | Вызов /stop от {ctx.author.name} в чате {ctx.channel.name}"
+        )
 
         if not ctx.voice_client:
             await ctx.respond("**Бот не находится в голосовом канале!**")
@@ -324,11 +444,15 @@ class MusicCog(commands.Cog):
 
         song = self._queue.pop(0)
 
-        logger.info(f"{ctx.guild.name} | Запущен трэк {song.artist} - {song.title} в канале {ctx.author.voice.channel}")
+        logger.info(
+            f"{ctx.guild.name} | Запущен трэк {song.artist} - {song.title} в канале {ctx.author.voice.channel}"
+        )
 
         ctx.voice_client.play(
-            source=discord.FFmpegOpusAudio(song.link, bitrate=BITRATE, executable=FFMPEG),
-            after=lambda _: self._bot.loop.create_task(self._play_next(ctx))
+            source=discord.FFmpegOpusAudio(
+                song.link, bitrate=BITRATE, executable=FFMPEG
+            ),
+            after=lambda _: self._bot.loop.create_task(self._play_next(ctx)),
         )
 
         await ctx.send(embed=StartingToPlayEmbed(ctx, song))

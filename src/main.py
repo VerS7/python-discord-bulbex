@@ -1,6 +1,7 @@
 """
 Точка входа бота
 """
+
 import discord
 from discord.ext import commands
 
@@ -16,6 +17,10 @@ intents = discord.Intents.default()
 # Бот
 bot = commands.Bot(command_prefix="/", intents=intents, case_insensitive=False)
 
+# Комманды
+musicCog = MusicCog(bot)
+debugCog = DebugCog(bot)
+
 # Логгера
 logger.add(LOGGER_FILE_PATH, rotation=LOGGER_ROTATION)
 
@@ -23,8 +28,12 @@ logger.add(LOGGER_FILE_PATH, rotation=LOGGER_ROTATION)
 @bot.event
 async def on_ready():
     """Ивент на запуске бота"""
-    await bot.change_presence(status=discord.Status.online,
-                              activity=discord.Activity(type=discord.ActivityType.listening, name="muzzlo"))
+    await bot.change_presence(
+        status=discord.Status.online,
+        activity=discord.Activity(type=discord.ActivityType.listening, name="muzzlo"),
+    )
+
+    await musicCog.init_yamusic()
 
     if ON_READY_GUILD_SYNC:
         logger.info("Сихронизация гильдий...")
@@ -35,12 +44,12 @@ async def on_ready():
 
 def start():
     """Запуск бота"""
-    bot.add_cog(MusicCog(bot))
-    bot.add_cog(DebugCog(bot))
+    bot.add_cog(musicCog)
+    bot.add_cog(debugCog)
     bot.run(token=TOKEN)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     try:
         logger.info("Приложение запущено.")
         start()
